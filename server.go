@@ -15,7 +15,7 @@ type ProxyServer struct {
 	keepalive    bool
 	localCaching bool
 
-	serveFunc func(w http.ResponseWriter, r *http.Request)
+	ServeFunc func(w http.ResponseWriter, r *http.Request)
 }
 
 func (proxy *ProxyServer) Start() error {
@@ -101,17 +101,24 @@ func (proxy *ProxyServer) Proxying(w io.Writer, r *http.Request, redirectAddr st
 	return written, nil
 }
 
-func NewProxyServer(listenPort int, gzip, keepalive, localCaching bool, serveFunc func(w http.ResponseWriter, r *http.Request)) *ProxyServer {
+func NewProxyServer(listenPort int, gzip, keepalive, localCaching bool) *ProxyServer {
 	proxy := &ProxyServer{
 		listenPort:   listenPort,
 		gzip:         gzip,
 		keepalive:    keepalive,
 		localCaching: localCaching,
-		serveFunc:    serveFunc,
+	}
+	proxy.ServeFunc = func(w http.ResponseWriter, r *http.Request) {
+		addr := GetAddr(r.Host)
+		_, err := proxy.Proxying(w, r, addr)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
 
 	serveHTTP := func(w http.ResponseWriter, r *http.Request) {
-		proxy.serveFunc(w, r)
+		proxy.ServeFunc(w, r)
 	}
 
 	httpServer := gzipHttpServer{
