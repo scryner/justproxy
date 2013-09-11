@@ -28,6 +28,21 @@ func (proxy *ProxyServer) Start() error {
 }
 
 func (proxy *ProxyServer) Proxying(w io.Writer, r *http.Request, redirectAddr string) (int64, error) {
+	reqPipeFunc := func(r io.Reader) (io.Reader, error) {
+		return r, nil
+	}
+
+	respPipeFunc := func(_w io.Writer, _r io.Reader) (int64, error) {
+		return io.Copy(_w, _r)
+	}
+
+	return proxy.ProxyingWithCopyFunc(w, r, redirectAddr, reqPipeFunc, respPipeFunc)
+}
+
+func (proxy *ProxyServer) ProxyingWithCopyFunc(w io.Writer, r *http.Request, redirectAddr string,
+	reqPipeFunc func(r io.Reader) (io.Reader, error),
+	respPipeFunc func(w io.Writer, r io.Reader) (int64, error)) (int64, error) {
+
 	c, err := net.Dial("tcp", redirectAddr)
 	if err != nil {
 		return 0, fmt.Errorf("while dial: %v", err)
@@ -37,8 +52,13 @@ func (proxy *ProxyServer) Proxying(w io.Writer, r *http.Request, redirectAddr st
 
 	httpCli := httputil.NewClientConn(c, nil)
 
+	reqBody, err := reqPipeFunc(r.Body)
+	if err != nil {
+		return 0, fmt.Errorf("while pipe req: %v", err)
+	}
+
 	// creating new request
-	newR, err := http.NewRequest(r.Method, r.RequestURI, r.Body)
+	newR, err := http.NewRequest(r.Method, r.RequestURI, reqBody)
 	if err != nil {
 		return 0, fmt.Errorf("while creating HTTP request to target: %v", err)
 	}
@@ -93,9 +113,9 @@ func (proxy *ProxyServer) Proxying(w io.Writer, r *http.Request, redirectAddr st
 		safelyDo(func() { w2.WriteHeader(resp.StatusCode) })
 	}
 
-	written, err := io.Copy(w, resp.Body)
+	written, err := respPipeFunc(w, resp.Body)
 	if err != nil {
-		return 0, fmt.Errorf("while write: %v", err)
+		return 0, fmt.Errorf("while pipe resp: %v", err)
 	}
 
 	return written, nil
