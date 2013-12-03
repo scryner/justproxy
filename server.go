@@ -91,7 +91,14 @@ func (proxy *ProxyServer) ProxyingWithCopyFunc(w io.Writer, r *http.Request, red
 	}
 
 	// resp, err := httpCli.Do(newR)
-	resp, _ := httpCli.Do(newR)
+	resp, err := httpCli.Do(newR)
+	if resp == nil {
+		if err != nil {
+			panic(err.Error())
+		} else {
+			panic("unknown error: thus response object is nil")
+		}
+	}
 
 	defer safelyDo(func() { resp.Body.Close() })
 
